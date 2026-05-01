@@ -1,10 +1,22 @@
-# How I'd run this demo on a customer call
+# Talk track and where the SE role earns its keep
 
-First crack at this. I haven't actually run an SE call yet, so this is what I'd try based on demos I've watched and the customer side of these conversations. I'd expect a real SE at FC to redline half of it. Fine — better that than ship something untested at a customer.
+Some thoughts on what a talk track around this demo could look like, plus the places I see an SE adding the most value at FC. The demo itself is just the prop — most of the actual work is what happens around it, and that's the bit I'm most interested in.
 
-The demo is the prop. The conversation is the thing.
+## Where I think the role earns its keep
 
-## Things I'd want to know before the call
+In rough order of where they'd come up in a customer relationship:
+
+**The first technical call.** Running a demo like this one. Not just the happy path — showing the failure modes (strict vs non-strict, what happens when verification can't reach FC) is what makes a thoughtful prospect actually buy in. The demo is the visible bit; the operator's choices in it are what land.
+
+**The security and DPO conversation.** CSP, residency, where verification traffic goes. These aren't questions a salesperson can credibly answer. Someone who can point at the env file and say "this one line is the only thing that changes between EU and global" is doing the actual heavy lifting in the deal.
+
+**The migration plan.** Customers coming off reCAPTCHA, hCaptcha or Turnstile need a measured rollout, not just working code. Shadow-mode for a week, look at the false-positive rate, then enforce. That recommendation should come from someone who's done it before, not be left as homework for the customer's engineers. I'd want this to be a default thing FC tells people, packaged the same way every time.
+
+**The proof-of-concept build.** When procurement says "show it works in our environment before we sign," that's an SE building a small thing in the customer's stack and handing it back. This demo is what that artefact looks like, on a smaller scale.
+
+**Bridging product feedback.** When a customer raises something like "we can't tighten our CSP because the widget injects inline styles," that's an SE listening, deciding whether it's a roadmap item or a workaround, and being the link between the customer and the product team. Captcha is the kind of product where the integration trade-offs are real and worth feeding back; an SE in the middle of those conversations is a feedback channel the product team wouldn't otherwise have.
+
+## Things I'd want to know before a call
 
 A few quick lookups beforehand that I think pay for themselves:
 
