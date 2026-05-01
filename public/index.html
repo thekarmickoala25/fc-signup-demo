@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Acme Signup — protected by Friendly Captcha</title>
+    <meta name="description" content="Demo signup form integrated with Friendly Captcha v2." />
+    <link rel="stylesheet" href="/styles.css" />
+
+    <!-- Sitekey injected from the server so we don't ship it in static HTML -->
+    <script src="/config.js"></script>
+
+    <!-- Friendly Captcha v2 site script. type=module for modern browsers,
+         nomodule fallback for older ones. Both auto-mount on .frc-captcha. -->
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/npm/@friendlycaptcha/[email protected]/site.min.js"
+      async
+      defer
+    ></script>
+    <script
+      nomodule
+      src="https://cdn.jsdelivr.net/npm/@friendlycaptcha/[email protected]/site.compat.min.js"
+      async
+      defer
+    ></script>
+  </head>
+  <body>
+    <main class="card">
+      <header class="card-header">
+        <div class="logo" aria-hidden="true">AC</div>
+        <h1>Create your Acme account</h1>
+        <p class="muted">
+          A demo signup form protected by
+          <a href="https://friendlycaptcha.com" target="_blank" rel="noopener">Friendly Captcha</a>
+          — no tracking, no puzzles, no cookies.
+        </p>
+      </header>
+
+      <form id="signup-form" novalidate>
+        <label class="field">
+          <span>Full name</span>
+          <input type="text" name="name" required minlength="1" maxlength="120" autocomplete="name" />
+        </label>
+
+        <label class="field">
+          <span>Work email</span>
+          <input type="email" name="email" required maxlength="254" autocomplete="email" />
+        </label>
+
+        <!-- The widget mounts here. On solve it injects a hidden input named
+             `frc-captcha-response` into this form, which we forward to the
+             server. data-start="auto" begins the puzzle as soon as the
+             widget mounts, so it's typically done before the user finishes
+             typing. -->
+        <div
+          class="frc-captcha"
+          data-sitekey=""
+          data-start="auto"
+          data-puzzle-endpoint="eu"
+        ></div>
+
+        <button type="submit" id="submit-btn">
+          <span class="label">Create account</span>
+          <span class="spinner" aria-hidden="true"></span>
+        </button>
+
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+      </form>
+
+      <footer class="card-footer">
+        <small>
+          This is a reference integration. Source &amp; architecture notes in the
+          <a href="https://github.com/" target="_blank" rel="noopener">README</a>.
+        </small>
+      </footer>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: fc-signup-demo
+    runtime: node
+    region: frankfurt
+    plan: free
+    buildCommand: npm install --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FRC_ENDPOINT
+        value: eu
+      - key: FRC_SITEKEY
+        sync: false
+      - key: FRC_API_KEY
+        sync: false

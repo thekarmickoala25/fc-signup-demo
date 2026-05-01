@@ -1,0 +1,198 @@
+:root {
+  --bg: #f7f7f5;
+  --bg-grad: radial-gradient(1200px 600px at 10% -10%, #eef2ff 0%, transparent 60%),
+    radial-gradient(800px 400px at 110% 110%, #fef3c7 0%, transparent 60%);
+  --card: #ffffff;
+  --ink: #0f1115;
+  --ink-muted: #5b6472;
+  --line: #e6e8ec;
+  --accent: #1a1f2b;
+  --accent-ink: #ffffff;
+  --ok: #0f7c4a;
+  --err: #b91c1c;
+  --radius: 14px;
+  --shadow: 0 1px 0 rgba(15, 17, 21, 0.04), 0 12px 40px -16px rgba(15, 17, 21, 0.18);
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, Helvetica, Arial,
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font);
+  color: var(--ink);
+  background: var(--bg) var(--bg-grad);
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 28px;
+}
+
+.card-header {
+  margin-bottom: 20px;
+}
+
+.logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 12px;
+  letter-spacing: 0.02em;
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0 0 6px 0;
+  letter-spacing: -0.01em;
+}
+
+.muted {
+  color: var(--ink-muted);
+  font-size: 14px;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.muted a {
+  color: var(--ink);
+}
+
+form {
+  display: grid;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field span {
+  font-size: 13px;
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+.field input {
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.field input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 17, 21, 0.08);
+}
+
+.frc-captcha {
+  margin-top: 4px;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  font-size: 15px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 0.05s ease, opacity 0.2s ease;
+}
+
+button:hover {
+  opacity: 0.92;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button .spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  display: none;
+  animation: spin 0.7s linear infinite;
+}
+
+button.is-loading .label {
+  opacity: 0.7;
+}
+
+button.is-loading .spinner {
+  display: inline-block;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.status {
+  margin: 4px 0 0 0;
+  font-size: 14px;
+  min-height: 1.2em;
+}
+
+.status.ok {
+  color: var(--ok);
+}
+
+.status.err {
+  color: var(--err);
+}
+
+.card-footer {
+  margin-top: 22px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.card-footer a {
+  color: var(--ink-muted);
+}
