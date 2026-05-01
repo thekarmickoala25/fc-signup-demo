@@ -1,23 +1,28 @@
-# Architecture & decisions
+# Architecture and decisions
 
-This is the longer-form companion to the README — the "why" behind each choice. Written as if I were sending it to a prospect's senior engineer after a technical deep-dive call.
+The longer version. Notes I made for myself while building this, tidied up so they read. If you disagree with any of it, brilliant, that's most of the value of writing it down.
 
-## The integration in one sentence
+## The whole thing in one sentence
 
-A Friendly Captcha widget runs client-side, computes a proof-of-work solution invisibly, attaches the solution to the form submit, and the server verifies that solution against `siteverify` before doing any signup work. That's it. The whole thing is ~180 lines of server code and one HTML form.
+A widget runs in the browser, quietly works out a proof-of-work solution, attaches the answer to the form submit, and the server checks that answer against `siteverify` before doing anything that creates a user. About 225 lines of server code and one HTML form.
 
-## Why these dependencies
+## What's in `package.json`
 
-| Package | Why it's here | What I'd swap it for |
-| --- | --- | --- |
-| `express` | Boring, well-understood, the customer's team already knows it. | Fastify if the customer has a perf SLO that justifies it. |
-| `@friendlycaptcha/server-sdk` | Official SDK. Handles endpoint selection, error codes, strict-mode semantics — things you'd otherwise re-derive from the API docs. | A direct `fetch` call to `siteverify` (~15 lines). Documented in the FC docs. |
-| `helmet` | One line, sane defaults, and crucially gives us a CSP we can lock down to the FC CDN only. | Hand-rolled middleware if the customer already has a CSP they own. |
-| `express-rate-limit` | Defence in depth — bot solvers will fail FC verification, but rate limit catches "real human, automated script" abuse. | A Redis-backed rate limiter behind a load balancer in real production. |
-| `pino` + `pino-http` | Structured logs that drop into any aggregator. | Whatever logger the customer's stack already uses. |
-| `zod` | Input validation that matches the contract; better errors than `if (!email)`. | `joi` / `valibot` / hand-rolled — it's a 6-line schema. |
+Nothing fancy. Each one is there because it's the obvious choice for the job, not because I went shopping.
 
-## The single most important call
+`express` because it's boring and everyone reading this code already knows it. If I had a real performance reason, I'd reach for Fastify, but I didn't.
+
+`@friendlycaptcha/server-sdk` rather than a raw `fetch` call. The SDK handles endpoint selection, error codes, and the strict-mode semantics for me. The raw-fetch version is also in your docs and is genuinely about fifteen lines, so it isn't load-bearing — it just felt like the more respectful choice for a demo aimed at FC.
+
+`helmet` for the headers. One line gets me sensible defaults, and the bit I actually care about (the CSP) sits on top of it.
+
+`express-rate-limit` because the captcha catches automated solvers but it doesn't catch a real person running a sloppy script. That's what the rate limit is for.
+
+`pino` and `pino-http` for structured logs. They drop into whatever aggregator someone's already running. If they hate Pino, swap it out, the world won't end.
+
+`zod` because validating the request shape up front means the error you give the user actually says what's wrong, instead of a generic "Required" that helps no one.
+
+## The verify call, which is the bit that matters
 
 ```js
 const verifyResult = await frc.verifyCaptchaResponse(captchaResponse);
@@ -26,47 +31,63 @@ if (!verifyResult.shouldAccept()) {
 }
 ```
 
-Three things to know about it:
+Three things about it that I think matter, in order of how much I'd lean on them in a conversation.
 
-1. **`shouldAccept()` vs `wasAbleToVerify()`**. `wasAbleToVerify()` tells you whether the API call succeeded. `shouldAccept()` tells you what to *do*. In the SDK's default non-strict mode, if the call to siteverify itself fails (network error, FC outage), `shouldAccept()` returns `true` — i.e. fail open. For a signup flow this is almost always what you want: a 30-second FC outage should not 503 your entire signup funnel. For high-value flows (payments, password reset) you'd flip `strict: true` in the client config so the same outage rejects the request instead.
+**`shouldAccept()` and `wasAbleToVerify()` are not the same thing, and that's the whole game.** `wasAbleToVerify()` answers "did the call to FC actually get an answer?" `shouldAccept()` answers "based on that, do I let the request through?" In the SDK's default non-strict mode, if the verification call itself fails (network, FC outage, whatever), `shouldAccept()` returns `true`. That's deliberate — a thirty-second outage at FC shouldn't take down every signup funnel that uses you. For a payment or password reset, you'd flip `strict: true` and the same outage would block. I went with non-strict here because it felt right for signup, but I'd want to know whether you usually nudge customers to set this per-endpoint or globally. I'm guessing per-endpoint is the better default and I'd rather be told.
 
-2. **Status code 200 ≠ valid**. The HTTP layer says "I successfully processed your verification request." The `success` field inside the body says "the user's solution was correct." The SDK collapses these into the two functions above; if you ever do this with raw `fetch`, you must check both.
+**HTTP 200 doesn't mean "valid."** The HTTP layer is just saying "I processed your request without crashing." The `success` field inside the body is the actual answer. The SDK rolls these into the two booleans above, but if anyone goes back to raw `fetch` they have to remember to check both, and that's a footgun waiting.
 
-3. **Don't trust the client to skip it.** The widget prevents a human from submitting without solving, but a script can post directly to `/api/signup`. Server-side verification is the only thing that actually stops bots.
+**The widget on its own enforces nothing.** A bot can POST straight at `/api/signup` and skip it. The verification call is what stops them. Worth being explicit about, because the widget's the visible bit and there's a temptation to think of it as the security boundary. It isn't.
 
-## Why EU routing is the default here
+## Why EU is the default routing
 
-Friendly Captcha runs siteverify endpoints in two regions: `global.frcapi.com` and `eu.frcapi.com`. They behave identically; the difference is data residency. Since FC's customer base skews EU-regulated (German banks, insurers, public-sector portals), making `eu` the default means a German DPO can read the env file and immediately know where verification traffic goes. A US-only customer flips one env var.
+`global.frcapi.com` and `eu.frcapi.com` behave the same; the difference is data residency. I made `eu` the default because the customer base I'm imagining (German banks, insurers, public-sector things) cares about it, and putting it in the env file means a DPO can audit where verification traffic is actually going in about three seconds.
+
+I don't actually know whether most of your customers pin to `eu`, or use `global` and let you route. That's one of the things I'd want to ask early.
 
 ## CSP
 
+The directives I added on top of helmet's defaults:
+
 ```
-script-src 'self' https://cdn.jsdelivr.net
-connect-src 'self' https://*.frcapi.com
+script-src   'self' https://cdn.jsdelivr.net
+worker-src   'self' blob:
+frame-src    'self' https://*.frcapi.com
+child-src    'self' https://*.frcapi.com
+connect-src  'self' https://*.frcapi.com
+style-src    'self' 'unsafe-inline'
+img-src      'self' data:
 ```
 
-The widget script is loaded from jsdelivr; once mounted, it talks only to FC's puzzle API. The CSP makes that contract enforceable: if the widget ever tried to call out somewhere else, the browser would block it and the customer's CSP report-only mode would surface it. This is the kind of thing a security team will ask about, and the answer is on one line.
+Every line is there for a real reason, and a couple of them I learnt about by getting bitten:
 
-## Rate limit shape
+- `script-src` allows jsdelivr (the widget script). Nothing else off-origin.
+- `worker-src` needs `blob:` because the widget builds the proof-of-work Web Worker from a `blob:` URL. I missed this on the first pass and the widget silently failed to solve. No console error, just nothing happening.
+- `frame-src` and `child-src` need `*.frcapi.com` because the visible bit of the widget is rendered inside an iframe served from FC's domain. I missed this one too — got "Anti-Robot check took too long to connect, retrying..." with no clue why until I read the CSP violations in the console.
+- `connect-src` lets the widget fetch puzzles from the same FC origins.
+- `style-src 'unsafe-inline'` is the one I'm not happy about. The widget injects styles directly, so without `unsafe-inline` the page renders broken. I think tightening this further would need nonces and a small change on the widget end. Curious whether it's come up from any of your security-conscious customers.
 
-10 attempts per IP per minute, returning 429. Tighter than most production defaults on purpose, because:
+The wider point: the CSP makes the contract enforceable. If the widget ever tried to call somewhere it shouldn't, the browser would block it and the customer's CSP report-only mode would surface it. That's the kind of thing a security team will ask about, and the answer fits in a few lines.
 
-- This is a signup endpoint. A real user will submit it once, maybe twice with a typo.
-- A bot that's failing FC verification will retry — the rate limit ensures we're not paying for siteverify calls on every retry.
-- Behind a real LB you'd key on `X-Forwarded-For` (`trust proxy: 1` is set) and ideally also on the email field after a few attempts.
+## Rate limit
 
-## What's deliberately *not* here
+Ten attempts per IP per minute, returning 429. That's tighter than most production defaults, on purpose:
 
-- A database. Signup persists into a `Map` so the demo runs single-process. Add Postgres or whatever the customer uses in prod.
-- Email verification. Outside scope of "show the captcha integration."
-- A real session/cookie story. Same reason.
-- Risk Intelligence wiring. The siteverify response surfaces a `risk_intelligence` field when the customer has it enabled — adding a second branch in the handler to read and act on it is a one-call follow-up demo.
+- A real signup happens once, maybe twice with a typo. Real users never hit ten.
+- A bot that's failing captcha verification will retry, and every retry is a wasted siteverify call to FC. Cap the retries.
+- Behind a real load balancer you'd key on `X-Forwarded-For` (`trust proxy: 1` is set so it does), and probably also key on the email field after a few attempts so a single bot rotating IPs doesn't slip through.
 
-## What I'd add for a production roll-out
+## What I deliberately didn't do
 
-1. Replace the `Map` with the customer's user store.
-2. Move the rate limit to Redis if there's more than one server.
-3. Add a feature flag around the verification call so they can shadow-mode it (log what FC thinks, but don't reject on it) for a week before turning enforcement on. This is how I'd recommend any customer migrate from reCAPTCHA / hCaptcha — measure, then enforce.
-4. Pipe the FC `eventId` into their analytics so they can correlate verification events with downstream signal (account abuse, payment chargebacks, etc.).
+- **A database.** Users persist into a `Map`, so the demo runs in a single process. Drop in Postgres or whatever's already in the customer's stack.
+- **Email verification, sessions, login.** Out of scope. This is a captcha demo, not an auth system.
+- **Risk Intelligence.** The siteverify response surfaces a `risk_intelligence` field for accounts that have it on. I'm not branching on it. The natural follow-up demo is "and here's the handler logic when RI's enabled" — a small change, but it didn't belong in v1.
 
-That's the whole thing.
+## What I'd add to ship this for real
+
+- Replace the `Map` with the customer's user store.
+- Move the rate limit to Redis if there's more than one app server.
+- Wrap the verification call in a feature flag for a staged rollout. The migration story for any customer coming off reCAPTCHA or hCaptcha should be: shadow-mode for a week (log what FC thinks, don't enforce on it), look at the false-positive rate, then turn enforcement on. I'd want this to be the default thing we tell people, not something each customer has to figure out alone.
+- Pipe the FC `eventId` into the customer's analytics so support can correlate captcha events with downstream signal — abuse, chargebacks, account takeovers. That's where the real value of the verification metadata lives, not in the immediate yes/no.
+
+That's the lot.

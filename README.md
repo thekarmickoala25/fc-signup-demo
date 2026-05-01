@@ -1,44 +1,60 @@
 # fc-signup-demo
 
-A small, production-shaped reference integration of **Friendly Captcha v2** into a Node.js signup flow. Built as a Solutions Engineering artefact: the kind of thing I'd hand a prospect after a first call so they can see what "good" looks like before they touch their own codebase.
+A working integration of [Friendly Captcha v2](https://friendlycaptcha.com) into a Node.js signup form.
 
-It's deliberately small (~180 lines of server code) but every choice is the choice I'd defend in front of a customer's security team.
+I said I'd have a play around with this myself after meeting in Hamburg, where we got talking about the SE role. I thought the best way to show I'd be useful was to actually integrate the product the way a customer's engineer would, and to write down the choices I made along the way. So this is partly a code sample and partly a "here's how I'd think about it." Happy to be told where I got things wrong.
 
 > **Live demo:** https://fc-signup-demo.onrender.com
-> *(Free Render tier — first request after idle takes ~30s to wake up.)*
+> *(On Render's free tier — first request after the service has been idle for a while takes ~30 seconds to wake up. Free-tier tax.)*
 
-## What it shows
+## What it actually does
 
-- **Frontend**: vanilla HTML form with the FC v2 widget mounted automatically by the site script. No framework lock-in — drops into any stack.
-- **Backend**: Express server using `@friendlycaptcha/server-sdk` to verify the puzzle solution before any signup is persisted.
-- **Defence in depth**: per-IP rate limit (`express-rate-limit`), strict CSP via Helmet locked to the FC CDN, schema validation with Zod, structured logs with Pino.
-- **EU routing by default**: `FRC_ENDPOINT=eu` keeps verification traffic in-region — usually the first thing a German DPO asks about.
-- **Fail-closed on exceptions, fail-open on unreachable verification**: matches the SDK's recommended posture for signup flows where availability matters.
-- **One-click deployable**: Render, Railway, or any Docker host.
+A user lands on the page, fills in name and email, and clicks Create account. Behind the scenes:
+
+- The Friendly Captcha widget loads from jsdelivr and quietly starts solving a proof-of-work puzzle in a Web Worker. The user does nothing — there's no checkbox, no images, nothing to click.
+- When the puzzle finishes, the widget writes the solution into a hidden form field called `frc-captcha-response`.
+- On submit, the browser POSTs the whole form (including that hidden field) to `/api/signup` as JSON.
+- The Express server validates the input, then hands the captcha response off to `@friendlycaptcha/server-sdk`, which calls `siteverify` on Friendly Captcha's API.
+- If the verification result says `shouldAccept()`, the user is created and the server returns `201`. Otherwise 400.
+
+The whole protection lives in that server-side verification step. The widget on its own enforces nothing — anyone could skip it and POST directly. But without a valid response, the verification call rejects, and the signup never happens.
 
 ## Architecture
 
 ```
 ┌──────────────┐     1. load widget script      ┌────────────────────┐
 │   browser    │ ─────────────────────────────► │  jsdelivr (FC CDN) │
-│  signup form │                                 └────────────────────┘
-│              │     2. solve puzzle in-bg      ┌────────────────────┐
+│  signup form │                                └────────────────────┘
+│              │     2. solve puzzle in bg      ┌────────────────────┐
 │              │ ◄─────────────────────────────►│  Friendly Captcha  │
-│              │     (via widget)                │      puzzle API    │
-└─────┬────────┘                                 └────────────────────┘
+│              │     (via the widget)           │      puzzle API    │
+└─────┬────────┘                                └────────────────────┘
       │ 3. POST /api/signup
       │   { name, email, frc-captcha-response }
       ▼
 ┌──────────────┐     4. verifyCaptchaResponse   ┌────────────────────┐
-│ Express app  │ ─────────────────────────────► │  global.frcapi.com │
+│ Express app  │ ─────────────────────────────► │  eu.frcapi.com     │
 │  (this repo) │ ◄───────────────────────────── │ /api/v2/siteverify │
 │              │     5. shouldAccept() ?        └────────────────────┘
 │              │
-│              │ 6. persist + 201, or reject
+│              │ 6. create user + 201, or reject
 └──────────────┘
 ```
 
-The widget injects a hidden `frc-captcha-response` field into the form on solve. The server forwards it to `siteverify` and only persists the user when `shouldAccept()` is true.
+The thing worth understanding from the diagram: the *only* call your server makes to Friendly Captcha is the verification one. Everything else (the puzzle, the widget UI, the iframe) goes browser-to-FC directly. Your server doesn't proxy anything, doesn't see the puzzle, doesn't need to know how proof-of-work works. It just asks "is this response valid?" and gets a yes or no.
+
+## What's real and what's mocked
+
+Real:
+- The Friendly Captcha integration end-to-end (widget, siteverify call, result handling).
+- The CSP (locked to FC's CDN and API origins, not "*").
+- Rate limiting, input validation, structured logging.
+- The deploy: this is actually running on Render in Frankfurt right now.
+
+Mocked:
+- The user store is an in-memory `Map`. In a real app this'd be Postgres or whatever the customer uses.
+- Email verification, sessions, login — all out of scope. This demo is about the captcha integration, not a full auth system.
+- Risk Intelligence — Friendly Captcha's higher-tier bot-detection module. The siteverify response surfaces a `risk_intelligence` field for accounts that have it enabled; I just don't act on it.
 
 ## Run locally
 
@@ -51,19 +67,13 @@ npm run dev
 # open http://localhost:3000
 ```
 
-Get a sitekey + API key from the [Friendly Captcha dashboard](https://app.friendlycaptcha.com).
+You'll need a sitekey and API key from the [Friendly Captcha dashboard](https://app.friendlycaptcha.com). The free tier is enough for the demo. Add `localhost` to the application's allowed domains, or the widget will refuse to mount.
 
 ## Deploy
 
-### Render (one click after pointing at the repo)
+The `render.yaml` here is what's running the live demo — push the repo, point Render at it, set `FRC_SITEKEY` and `FRC_API_KEY` in the environment tab, done. Don't forget to add the deployed hostname to the application's allowed domains in the FC dashboard, or the widget will silently fail.
 
-The included `render.yaml` configures a free-tier web service in Frankfurt with EU verification. Push the repo, point Render at it, and set `FRC_SITEKEY` / `FRC_API_KEY` in the dashboard.
-
-### Railway
-
-`railway.json` is included — `railway up` and set the same two env vars.
-
-### Docker / anywhere
+For Railway, `railway.json` does the same thing. For anywhere else, the `Dockerfile` is straightforward:
 
 ```bash
 docker build -t fc-signup-demo .
@@ -78,36 +88,37 @@ docker run -p 3000:3000 \
 
 ```
 .
-├── server.js                # Express app — ~150 lines, the whole backend
+├── server.js                  # Express app — the whole backend, ~225 lines
 ├── public/
-│   ├── index.html           # Signup form + FC widget + sitekey injection
-│   ├── styles.css           # Minimal, hand-tuned UI
-│   └── app.js               # Submit handler, error states, widget reset
+│   ├── index.html             # Signup form + FC widget mount point
+│   ├── styles.css             # Hand-tuned, no framework
+│   └── app.js                 # Submit handler, error states, widget reset
 ├── test/
-│   └── smoke.js             # Node-only smoke test (no deps)
+│   └── smoke.js               # Boots the server, hits the endpoints, checks responses
 ├── docs/
-│   ├── ARCHITECTURE.md      # Decisions + tradeoffs in more depth
-│   └── SE_TALK_TRACK.md     # How I'd walk a prospect through this
+│   ├── ARCHITECTURE.md        # Why each choice, in more detail
+│   └── SE_TALK_TRACK.md       # First crack at how I'd demo this on a customer call
 ├── Dockerfile
 ├── render.yaml
-└── railway.json
+├── railway.json
+└── .env.example
 ```
 
-## SE walkthrough script (5 minutes)
+## A few things I'd want to talk about
 
-If I were demoing this on a prospect call, I'd do it in this order. Reading the README is the talk track:
+These are the questions I'd expect from a customer's engineering team, and they're the things I'd want to think through with someone at FC:
 
-1. **Open the site, fill in the form.** Point out what's *not* there: no checkbox, no image grid, no "I am not a robot" language. The widget mounted automatically and is already solving the proof-of-work in the background.
-2. **Submit.** Show the success state. Open dev tools → Network → highlight the `POST /api/signup` request payload. Point at the `frc-captcha-response` field and say: "this is what the widget injected, the server must verify it."
-3. **Show the server log line for the signup.** Point at `eventId` — every verification has a unique ID we can correlate to dashboard analytics if Risk Intelligence is enabled.
-4. **Trigger a failure.** In dev tools, edit the hidden input to garbage and resubmit. Show the 400 with `error: captcha_failed` and the `wasAbleToVerify=true, errorCode=...` log line.
-5. **Trigger the rate limit.** Hammer the endpoint 11 times. Show the 429 — defence in depth, FC catches the bot, rate limit catches the human-with-a-script.
-6. **Tour the code.** `server.js` is 150 lines. Three things to call out:
-   - The `verifyCaptchaResponse` call and the `shouldAccept()` / `wasAbleToVerify()` distinction (and why "fail open on unreachable" is right for signup flows).
-   - The CSP — `connect-src` is locked to `*.frcapi.com`, so the widget genuinely can't talk anywhere else.
-   - The `FRC_ENDPOINT=eu` env var — the only difference between US and EU residency is one string.
+**Strict vs non-strict mode.** The SDK's default is non-strict — if the verification API itself is unreachable for a few seconds, the request goes through. For signup that feels right (an FC outage shouldn't take down everyone's funnels). For payments or password reset I'd flip strict on. I'd want to ask whether you usually recommend customers set this per-endpoint or globally.
 
-The point I'd close on: **this is the integration their engineering team would own forever, and it's small enough to read in one sitting.** That's the differentiator vs. competitors that ship 100KB of obfuscated JS into every page.
+**The CSP.** I locked `script-src` to jsdelivr only, `connect-src` and `frame-src` to `*.frcapi.com`. It works, but `style-src` still needs `'unsafe-inline'` because the widget injects styles directly. I think that's unavoidable without nonces and an FC-side change — would be curious whether you've seen customers raise it.
+
+**Risk Intelligence.** I'm not using it here, but the siteverify response includes a `risk_intelligence` field when enabled. The natural next demo is "and here's how a customer would branch on that data" — a one-call follow-up.
+
+**EU vs global routing.** I made `eu` the default because it seemed obvious for FC's customer base, but I don't actually know what split you see in practice. Curious whether most customers pin to one region or use `global` and let FC route.
+
+## What I'd add for production
+
+Persist users into a real database. Move the rate limit to Redis so it works across multiple servers. Add a feature flag around the verification call so a customer migrating from reCAPTCHA / hCaptcha can shadow-mode the integration first (log what FC thinks but don't enforce on it) before turning enforcement on. Pipe the FC `eventId` into analytics so support can correlate captcha events with downstream signal — abuse, chargebacks, etc.
 
 ## Tests
 
@@ -115,8 +126,8 @@ The point I'd close on: **this is the integration their engineering team would o
 npm run test:smoke
 ```
 
-Boots the server, hits `/healthz`, exercises the validation + rate-limit paths. Doesn't require a real Friendly Captcha key.
+Boots the server, hits each endpoint, checks the response shapes and the CSP headers. Doesn't need real FC credentials — uses placeholders and skips the actual verification call. 14 checks; runs in ~2 seconds.
 
 ## License
 
-MIT — do whatever, this is a portfolio piece.
+MIT.
