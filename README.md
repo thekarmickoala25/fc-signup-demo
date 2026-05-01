@@ -4,6 +4,9 @@ A small, production-shaped reference integration of **Friendly Captcha v2** into
 
 It's deliberately small (~180 lines of server code) but every choice is the choice I'd defend in front of a customer's security team.
 
+> **Live demo:** https://fc-signup-demo.onrender.com
+> *(Free Render tier — first request after idle takes ~30s to wake up.)*
+
 ## What it shows
 
 - **Frontend**: vanilla HTML form with the FC v2 widget mounted automatically by the site script. No framework lock-in — drops into any stack.
@@ -40,7 +43,7 @@ The widget injects a hidden `frc-captcha-response` field into the form on solve.
 ## Run locally
 
 ```bash
-git clone <this repo>
+git clone https://github.com/thekarmickoala25/fc-signup-demo.git
 cd fc-signup-demo
 cp .env.example .env       # then fill in FRC_SITEKEY + FRC_API_KEY
 npm install
