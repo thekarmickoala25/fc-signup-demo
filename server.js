@@ -84,6 +84,13 @@ app.use(
         // a blob: URL. Without `blob:` here, the worker is silently blocked
         // and the widget never finishes solving.
         'worker-src': ["'self'", 'blob:'],
+        // The widget UI itself is rendered inside an iframe served from
+        // https://eu*.frcapi.com (or global*) — so the same origins need to
+        // be allowed as iframe sources too. Without this the iframe load
+        // is blocked and the widget shows "Anti-Robot check took too long
+        // to connect, retrying...". child-src is the older alias.
+        'frame-src': ["'self'", 'https://*.frcapi.com'],
+        'child-src': ["'self'", 'https://*.frcapi.com'],
         'connect-src': ["'self'", 'https://*.frcapi.com'],
         'style-src': ["'self'", "'unsafe-inline'"],
         'img-src': ["'self'", 'data:'],

@@ -76,6 +76,8 @@ try {
   const csp = idx.headers.get('content-security-policy') || '';
   check('CSP includes jsdelivr in script-src', csp.includes('cdn.jsdelivr.net'));
   check('CSP allows blob: workers', /worker-src[^;]*blob:/.test(csp));
+  check('CSP frame-src allows *.frcapi.com', /frame-src[^;]*\*\.frcapi\.com/.test(csp));
+  check('CSP connect-src allows *.frcapi.com', /connect-src[^;]*\*\.frcapi\.com/.test(csp));
 
   console.log('signup: missing captcha');
   const a = await fetchJson('/api/signup', {
