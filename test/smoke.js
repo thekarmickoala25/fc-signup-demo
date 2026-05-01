@@ -61,6 +61,18 @@ try {
   check('index serves OK', idx.status === 200);
   check('sitekey rendered into HTML', idxBody.includes(`data-sitekey="${env.FRC_SITEKEY}"`));
   check('placeholder fully replaced', !idxBody.includes('__FRC_SITEKEY__'));
+  // Regression guard: search results sometimes obfuscate `sdk@VERSION` as
+  // `[email protected]` because the @ pattern looks like an email. If that
+  // ever lands in our HTML, the CDN serves a 400 and the widget silently
+  // never mounts. Fail the build instead.
+  check(
+    'no email-obfuscation artefact in HTML',
+    !idxBody.includes('[email') && !idxBody.includes('email%20protected')
+  );
+  check(
+    'FC SDK script src points at a real version',
+    /cdn\.jsdelivr\.net\/npm\/@friendlycaptcha\/sdk@\d+\.\d+\.\d+\/site\.min\.js/.test(idxBody)
+  );
   const csp = idx.headers.get('content-security-policy') || '';
   check('CSP includes jsdelivr in script-src', csp.includes('cdn.jsdelivr.net'));
   check('CSP allows blob: workers', /worker-src[^;]*blob:/.test(csp));
