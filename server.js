@@ -29,6 +29,7 @@ import pinoHttp from 'pino-http';
 import { z } from 'zod';
 import { FriendlyCaptchaClient } from '@friendlycaptcha/server-sdk';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -79,6 +80,10 @@ app.use(
       directives: {
         // The FC widget loads from jsdelivr; everything else is same-origin.
         'script-src': ["'self'", 'https://cdn.jsdelivr.net'],
+        // The FC widget runs the proof-of-work in a Web Worker created from
+        // a blob: URL. Without `blob:` here, the worker is silently blocked
+        // and the widget never finishes solving.
+        'worker-src': ["'self'", 'blob:'],
         'connect-src': ["'self'", 'https://*.frcapi.com'],
         'style-src': ["'self'", "'unsafe-inline'"],
         'img-src': ["'self'", 'data:'],
@@ -91,13 +96,19 @@ app.use(pinoHttp({ logger }));
 app.use(express.json({ limit: '16kb' }));
 app.use(express.urlencoded({ extended: true, limit: '16kb' }));
 
-// Surface the public sitekey to the frontend without bundling.
-app.get('/config.js', (_req, res) => {
-  res.type('application/javascript');
-  res.send(`window.__FRC_SITEKEY__ = ${JSON.stringify(config.frcSitekey)};`);
+// Render index.html with the sitekey injected into the FC widget's
+// data-sitekey attribute server-side. Doing this at request time (rather
+// than in client JS after page load) avoids a race with the FC site script,
+// which auto-mounts widgets as soon as it loads. The sitekey is a public
+// value — there's no reason to keep it out of the static HTML.
+const indexTemplate = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+const renderedIndex = indexTemplate.replaceAll('__FRC_SITEKEY__', config.frcSitekey);
+
+app.get('/', (_req, res) => {
+  res.type('html').send(renderedIndex);
 });
 
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '5m' }));
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '5m', index: false }));
 
 // ---- Signup endpoint ------------------------------------------------------
 

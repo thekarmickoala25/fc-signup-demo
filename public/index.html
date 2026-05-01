@@ -7,11 +7,10 @@
     <meta name="description" content="Demo signup form integrated with Friendly Captcha v2." />
     <link rel="stylesheet" href="/styles.css" />
 
-    <!-- Sitekey injected from the server so we don't ship it in static HTML -->
-    <script src="/config.js"></script>
-
     <!-- Friendly Captcha v2 site script. type=module for modern browsers,
-         nomodule fallback for older ones. Both auto-mount on .frc-captcha. -->
+         nomodule fallback for older ones. Both auto-mount on .frc-captcha.
+         The sitekey is rendered server-side into data-sitekey below so the
+         widget always has it before mount, with no client-side race. -->
     <script
       type="module"
       src="https://cdn.jsdelivr.net/npm/@friendlycaptcha/[email protected]/site.min.js"
@@ -55,7 +54,7 @@
              typing. -->
         <div
           class="frc-captcha"
-          data-sitekey=""
+          data-sitekey="__FRC_SITEKEY__"
           data-start="auto"
           data-puzzle-endpoint="eu"
         ></div>

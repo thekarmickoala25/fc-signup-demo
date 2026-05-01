@@ -1,19 +1,15 @@
 // Frontend behaviour for the signup form.
 //
-// The Friendly Captcha widget mounts itself onto `.frc-captcha` and, on
-// solve, injects a hidden input named `frc-captcha-response` into the
-// surrounding form. We use plain FormData on submit so that hidden field
-// rides along automatically.
+// The Friendly Captcha widget mounts itself onto `.frc-captcha` (auto-mount)
+// using the sitekey rendered into data-sitekey by the server. On solve it
+// injects a hidden input named `frc-captcha-response` into the surrounding
+// form. We use plain FormData on submit so that hidden field rides along
+// automatically.
 
 const form = document.getElementById('signup-form');
 const submitBtn = document.getElementById('submit-btn');
 const statusEl = document.getElementById('status');
 const widgetEl = document.querySelector('.frc-captcha');
-
-// Inject the sitekey from the server-rendered config.
-if (window.__FRC_SITEKEY__) {
-  widgetEl.setAttribute('data-sitekey', window.__FRC_SITEKEY__);
-}
 
 function setStatus(msg, kind = '') {
   statusEl.textContent = msg;
@@ -28,11 +24,19 @@ function setLoading(isLoading) {
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   setStatus('');
-  setLoading(true);
 
   const fd = new FormData(form);
   const payload = Object.fromEntries(fd.entries());
 
+  // Friendly fast-path: if the captcha hasn't solved yet, tell the user
+  // before we round-trip the server. Avoids the generic "Required" message
+  // and explains *why* we're not letting the form through.
+  if (!payload['frc-captcha-response']) {
+    setStatus('Hold on — the captcha is still solving. Try again in a moment.', 'err');
+    return;
+  }
+
+  setLoading(true);
   try {
     const res = await fetch('/api/signup', {
       method: 'POST',

@@ -55,6 +55,16 @@ try {
   const h = await fetchJson('/healthz');
   check('returns ok', h.status === 200 && h.body?.ok === true);
 
+  console.log('index: sitekey + CSP wired in');
+  const idx = await fetch(`http://localhost:${PORT}/`);
+  const idxBody = await idx.text();
+  check('index serves OK', idx.status === 200);
+  check('sitekey rendered into HTML', idxBody.includes(`data-sitekey="${env.FRC_SITEKEY}"`));
+  check('placeholder fully replaced', !idxBody.includes('__FRC_SITEKEY__'));
+  const csp = idx.headers.get('content-security-policy') || '';
+  check('CSP includes jsdelivr in script-src', csp.includes('cdn.jsdelivr.net'));
+  check('CSP allows blob: workers', /worker-src[^;]*blob:/.test(csp));
+
   console.log('signup: missing captcha');
   const a = await fetchJson('/api/signup', {
     method: 'POST',
